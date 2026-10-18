@@ -6,32 +6,145 @@ datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
 }
-
-// Doctor Registry
-model User {
-  id           String        @id @default(uuid())
-  doctorName   String
-  email        String        @unique
-  password     String
-  hospitalName String        // "Hospital 1" | "Hospital 2"
-  cases        MedicalCase[]
-  createdAt    DateTime      @default(now())
+model Doctor{
+  id Int      @id @default(autoincrement())
+  email String @unique
+  password String 
+  name String?
+}
+model Authentication {
+  authenticationID                             Int       @id @default(autoincrement())
+  patientID                                    Int?
+  nationalID                                   String?
+  password                                     String?
+  Patients_Authentication_nationalIDToPatients Patients? @relation("Authentication_nationalIDToPatients", fields: [nationalID], references: [nationalID], onDelete: NoAction, onUpdate: NoAction)
+  Patients_Authentication_patientIDToPatients  Patients? @relation("Authentication_patientIDToPatients", fields: [patientID], references: [patientID], onDelete: NoAction, onUpdate: NoAction)
 }
 
-model MedicalCase {
-  id           String   @id @default(uuid())
-  patientCnic  String   // search key
-  hospitalName String
-  diagnosis    String   // AES-256-GCM ciphertext
-  treatment    String   // AES-256-GCM ciphertext
-  medicines    String
-  caseStatus   String   @default("PENDING") // PENDING | COMPLETED
-  checkupDate  DateTime @default(now())
+model ClinicalNotes {
+  noteID          Int              @id @default(autoincrement())
+  recordID        Int?
+  DiagnosisID     Int?
+  Notes           String?          @db.VarChar
+  RecordDiagnosis RecordDiagnosis? @relation(fields: [DiagnosisID], references: [diagnosisID], onDelete: NoAction, onUpdate: NoAction)
+  MedicalRecords  MedicalRecords?  @relation(fields: [recordID], references: [recordID], onDelete: NoAction, onUpdate: NoAction)
+}
 
-  doctorId     String
-  doctor       User     @relation(fields: [doctorId], references: [id], onDelete: Cascade)
+model MedicalRecords {
+  recordID             Int                    @id @default(autoincrement())
+  patientID            Int?
+  doctorID             Int?
+  hospitalID           Int?
+  recordDATE           DateTime?              @db.Timestamp(6)
+  recordType           String?                @db.VarChar
+  cheif_complaint      String?                @db.VarChar
+  follow_up_date       DateTime?              @db.Date
+  ClinicalNotes        ClinicalNotes[]
+  Patients             Patients?              @relation(fields: [patientID], references: [patientID], onDelete: NoAction, onUpdate: NoAction)
+  RecordDiagnosis      RecordDiagnosis[]
+  RecordMedicines      RecordMedicines[]
+  medical_record_tests medical_record_tests[]
+  record_symptoms      record_symptoms[]
+}
 
-  createdAt    DateTime @default(now())
+model Medications {
+  MedID           Int               @id @default(autoincrement())
+  MedicineName    String?           @db.VarChar
+  Formula         String?           @db.VarChar
+  Strength        String?           @db.VarChar
+  RecordMedicines RecordMedicines[]
+}
 
-  @@index([patientCnic])
+model PatientAddress {
+  AddressID   Int       @id @default(autoincrement())
+  patientID   Int?
+  Area        String?
+  HouseNumber String?
+  Province    String?
+  City        String?
+  Street      String?
+  Block       String?
+  Patients    Patients? @relation(fields: [patientID], references: [patientID], onDelete: Cascade)
+}
+
+model Patients {
+  patientID                                          Int              @id @default(autoincrement())
+  nationalID                                         String?          @unique
+  firstName                                          String?
+  lastName                                           String?
+  date_of_birth                                      String?
+  blood_group                                        String?
+  gender                                             String?
+  phone                                              String?
+  email                                              String?
+  createdAt                                          DateTime?        @db.Timestamp(6)
+  Authentication_Authentication_nationalIDToPatients Authentication[] @relation("Authentication_nationalIDToPatients")
+  Authentication_Authentication_patientIDToPatients  Authentication[] @relation("Authentication_patientIDToPatients")
+  MedicalRecords                                     MedicalRecords[]
+  PatientAddress                                     PatientAddress[]
+}
+
+model RecordDiagnosis {
+  diagnosisID    Int             @id @default(autoincrement())
+  recordID       Int?
+  Diagnosis      String?         @db.VarChar
+  Diagnosisnotes String?         @db.VarChar
+  ClinicalNotes  ClinicalNotes[]
+  MedicalRecords MedicalRecords? @relation(fields: [recordID], references: [recordID], onDelete: NoAction, onUpdate: NoAction)
+}
+
+model RecordMedicines {
+  id             Int            @id @default(autoincrement())
+  record_id      Int
+  medicineID     Int?
+  dosage         String?        @db.VarChar
+  frequency      String?        @db.VarChar
+  duration_days  Int?
+  Medications    Medications?   @relation(fields: [medicineID], references: [MedID], onDelete: NoAction, onUpdate: NoAction)
+  MedicalRecords MedicalRecords @relation(fields: [record_id], references: [recordID], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([record_id], map: "ix_RecordMedicines_record_id")
+}
+
+model medical_record_tests {
+  id             Int            @id @default(autoincrement())
+  record_id      Int
+  test_id        Int
+  performed_at   DateTime?      @db.Timestamptz(6)
+  result         String?
+  status         String         @db.VarChar(20)
+  MedicalRecords MedicalRecords @relation(fields: [record_id], references: [recordID], onDelete: Cascade)
+  medical_tests  medical_tests  @relation(fields: [test_id], references: [test_id])
+
+  @@unique([record_id, test_id, performed_at], map: "uq_record_test_time")
+  @@index([record_id], map: "ix_medical_record_tests_record_id")
+  @@index([test_id], map: "ix_medical_record_tests_test_id")
+}
+
+model medical_tests {
+  test_id              Int                    @id @default(autoincrement())
+  name                 String                 @unique @db.VarChar(150)
+  description          String?
+  medical_record_tests medical_record_tests[]
+}
+
+model record_symptoms {
+  record_symptom_id Int            @id @default(autoincrement())
+  record_id         Int
+  symptom_id        Int
+  severity          String?        @db.VarChar(20)
+  duration_days     Int?
+  notes             String?
+  MedicalRecords    MedicalRecords @relation(fields: [record_id], references: [recordID], onDelete: Cascade)
+  symptoms          symptoms       @relation(fields: [symptom_id], references: [symptom_id])
+
+  @@index([record_id], map: "ix_record_symptoms_record_id")
+  @@index([symptom_id], map: "ix_record_symptoms_symptom_id")
+}
+
+model symptoms {
+  symptom_id      Int               @id @default(autoincrement())
+  name            String            @unique @db.VarChar(100)
+  code            String?           @db.VarChar(50)
+  record_symptoms record_symptoms[]
 }

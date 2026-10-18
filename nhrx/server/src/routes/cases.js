@@ -1,57 +1,122 @@
-const router = require('express').Router();
-const prisma = require('../prisma');
-const { requireAuth } = require('../middleware/auth');
-const { decryptCase } = require('../utils/crypto');
+const express = require('express');
+const router = express.Router();
+const prisma = require('../prisma'); // Prisma client
+const { requireAuth } = require('../middleware/auth'); // Security middleware
 
-const STATUSES = ['PENDING', 'COMPLETED'];
-const doctorSelect = { select: { doctorName: true, hospitalName: true } };
+// ==========================================
+// 1. DOCTOR DASHBOARD: INCOMING REQUESTS LOGIC
+// ==========================================
 
-router.use(requireAuth);
+// API: Login huay doctor ki saari 'pending' patient requests lane ke liye
+router.get('/pending-requests', requireAuth, async (req, res) => {
+    const doctorId = req.doctor.id; 
 
-// GET /api/cases/:cnic — full cross-hospital timeline (decrypt-on-read)
-router.get('/:cnic', async (req, res) => {
-  const rows = await prisma.medicalCase.findMany({
-    where: { patientCnic: req.params.cnic.trim() },
-    include: { doctor: doctorSelect },
-    orderBy: { checkupDate: 'desc' },
-  });
-  res.json(rows.map(decryptCase));
+    try {
+        const requests = await prisma.case.findMany({
+            where: {
+                doctorId: doctorId,
+                caseStatus: 'PENDING' // Aapke schema ke toggle status ke mutabiq
+            },
+            orderBy: {
+                createdAt: 'desc'
+            }
+        });
+        return res.json(requests);
+    } catch (error) {
+        console.error("Prisma Error:", error);
+        return res.status(500).json({ error: "Database error while fetching requests." });
+    }
 });
 
-// POST /api/cases — log a new case at the doctor's hospital
-router.post('/', async (req, res) => {
-  const { patientCnic, diagnosis, treatment, medicines, caseStatus = 'PENDING', checkupDate } = req.body;
-  if (!patientCnic || !diagnosis || !treatment) {
-    return res.status(400).json({ error: 'patientCnic, diagnosis and treatment are required' });
-  }
-  const created = await prisma.medicalCase.create({
-    data: {
-      patientCnic: patientCnic.trim(),
-      diagnosis, treatment,
-      medicines: medicines || '',
-      caseStatus: STATUSES.includes(caseStatus) ? caseStatus : 'PENDING',
-      checkupDate: checkupDate ? new Date(checkupDate) : new Date(),
-      hospitalName: req.doctor.hospitalName,
-      doctorId: req.doctor.id,
-    },
-    include: { doctor: doctorSelect },
-  });
-  res.status(201).json(decryptCase(created));
+// API: Request accept ya reject karne par status update karne ke liye
+router.put('/update-status/:caseId', requireAuth, async (req, res) => {
+    const { caseId } = req.params;
+    const { status } = req.body; // 'accepted' ya 'rejected'
+
+    if (!status || !['accepted', 'rejected'].includes(status)) {
+        return res.status(400).json({ error: "Invalid status! Use 'accepted' or 'rejected'." });
+    }
+
+    try {
+        // Status ko PENDING se badal kar COMPLETED ya change karne ke liye
+        const targetStatus = status === 'accepted' ? 'COMPLETED' : 'REJECTED';
+        const updatedCase = await prisma.case.update({
+            where: { id: parseInt(caseId) },
+            data: { caseStatus: targetStatus }
+        });
+        return res.json({ message: `Status updated successfully!`, updatedCase });
+    } catch (error) {
+        console.error("Error updating status:", error);
+        return res.status(500).json({ error: "Database error during status update." });
+    }
 });
 
-// PATCH /api/cases/:id/status — PENDING <-> COMPLETED (owner doctor only)
-router.patch('/:id/status', async (req, res) => {
-  const { caseStatus } = req.body;
-  if (!STATUSES.includes(caseStatus)) return res.status(400).json({ error: 'Invalid status' });
-  const existing = await prisma.medicalCase.findUnique({ where: { id: req.params.id } });
-  if (!existing) return res.status(404).json({ error: 'Case not found' });
-  if (existing.doctorId !== req.doctor.id) return res.status(403).json({ error: 'Only the treating doctor can update status' });
-  const updated = await prisma.medicalCase.update({
-    where: { id: req.params.id },
-    data: { caseStatus },
-    include: { doctor: doctorSelect },
-  });
-  res.json(decryptCase(updated));
+
+// ==========================================
+// 2. PATIENT PROFILE: TIMELINE & HISTORY LOGIC
+// ==========================================
+
+// API: Patient ke CNIC ke mutabiq uski saari history lane ke liye (Matches: getCases)
+router.get('/:cnic', requireAuth, async (req, res) => {
+    const { cnic } = req.params;
+
+    try {
+        const cases = await prisma.case.findMany({
+            where: {
+                patientCnic: decodeURIComponent(cnic)
+            },
+            orderBy: {
+                createdAt: 'desc'
+            }
+        });
+        return res.json(cases);
+    } catch (error) {
+        console.error("Prisma Error:", error);
+        return res.status(500).json({ error: "Database error while fetching cases." });
+    }
+});
+
+// API: Naya checkup record create karne ke liye (Matches: createCase)
+router.post('/', requireAuth, async (req, res) => {
+    const { patientCnic, description, hospitalName } = req.body;
+    const doctorId = req.doctor.id; 
+
+    if (!patientCnic) {
+        return res.status(400).json({ error: "Patient CNIC is required!" });
+    }
+
+    try {
+        const newCase = await prisma.case.create({
+            data: {
+                patientCnic,
+                description,
+                hospitalName,
+                doctorId,
+                caseStatus: 'PENDING' 
+            }
+        });
+        return res.status(201).json(newCase);
+    } catch (error) {
+        console.error("Prisma Error:", error);
+        return res.status(500).json({ error: "Database error while creating case." });
+    }
+});
+
+// API: Status toggle karne ke liye PATCH method (Matches: updateStatus)
+router.patch('/:id/status', requireAuth, async (req, res) => {
+    const { id } = req.params;
+    const { caseStatus } = req.body; 
+
+    try {
+        const updatedCase = await prisma.case.update({
+            where: { id: parseInt(id) },
+            data: { caseStatus: caseStatus }
+        });
+        return res.json(updatedCase);
+    } catch (error) {
+        console.error("Prisma Error:", error);
+        return res.status(500).json({ error: "Database error during status update." });
+    }
 });
 
 module.exports = router;
