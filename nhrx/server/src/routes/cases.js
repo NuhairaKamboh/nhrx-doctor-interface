@@ -1,4 +1,4 @@
-const express = require('express');
+/*const express = require('express');
 const router = express.Router();
 const prisma = require('../prisma'); // Prisma client
 const { requireAuth } = require('../middleware/auth'); // Security middleware
@@ -119,4 +119,96 @@ router.patch('/:id/status', requireAuth, async (req, res) => {
     }
 });
 
+module.exports = router;*/
+
+
+const express = require('express');
+const router = express.Router();
+const prisma = require('../prisma');
+
+// 1. GET PATIENT HISTORY BY HOSPITAL FILTER
+router.get('/:cnic', async (req, res) => {
+    const { cnic } = req.params;
+    const { hospitalID } = req.query; // Frontend dropdown se aane wali ID
+
+    try {
+        const patient = await prisma.patients.findUnique({
+            where: { nationalID: decodeURIComponent(cnic) }
+        });
+
+        if (!patient) return res.json([]);
+
+        // Filter queries based on selected hospital dynamic configuration
+        const history = await prisma.medicalRecords.findMany({
+            where: { 
+                patientID: patient.patientID,
+                hospitalID: hospitalID ? parseInt(hospitalID) : undefined // Agar selection ho to filter karein
+            },
+            include: {
+                RecordDiagnosis: true,
+                RecordMedicines: true
+            },
+            orderBy: { recordDATE: 'desc' }
+        });
+
+        const formattedHistory = history.map(item => ({
+            id: item.recordID,
+            checkupDate: item.recordDATE || new Date(),
+            hospitalName: item.hospitalID === 2 ? "Hospital 2" : "Hospital 1",
+            caseStatus: "COMPLETED",
+            chiefComplaint: item.cheif_complaint || "General Checkup",
+            diagnoses: item.RecordDiagnosis.map(d => d.Diagnosis).join(', ') || 'No Diagnosis',
+            medicines: item.RecordMedicines.map(m => m.dosage).join(', ') || 'No Medicines'
+        }));
+
+        return res.json(formattedHistory);
+    } catch (error) {
+        console.error(error);
+        return res.status(500).json({ error: "Fetch error" });
+    }
+});
+
+// 2. CREATE MEDICAL RECORD WITH SPECIFIC HOSPITAL ID
+router.post('/', async (req, res) => {
+    const { patientCnic, description, hospitalID } = req.body;
+    const currentHospitalID = hospitalID ? parseInt(hospitalID) : 1; 
+
+    if (!patientCnic) return res.status(400).json({ error: "CNIC required!" });
+
+    try {
+        let patient = await prisma.patients.findUnique({
+            where: { nationalID: patientCnic }
+        });
+
+        if (!patient) {
+            patient = await prisma.patients.create({
+                data: {
+                    nationalID: patientCnic,
+                    firstName: "Patient",
+                    lastName: "Auto-Registered"
+                }
+            });
+        }
+
+        const newRecord = await prisma.medicalRecords.create({
+            data: {
+                patientID: patient.patientID,
+                doctorID: 1,
+                hospitalID: currentHospitalID, // Saves 1 or 2 seamlessly based on dropdown toggle
+                recordDATE: new Date(),
+                cheif_complaint: description || "General Checkup",
+                recordType: "OPD"
+            }
+        });
+
+        return res.status(201).json(newRecord);
+    } catch (error) {
+        console.error(error);
+        return res.status(500).json({ error: "Saving failed" });
+    }
+});
+
 module.exports = router;
+
+
+

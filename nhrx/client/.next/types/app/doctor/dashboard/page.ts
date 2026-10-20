@@ -1,8 +1,8 @@
-// File: C:\Users\Nuhaira\Downloads\nhrx-doctor-interface\nhrx\client\app\login\page.js
-import * as entry from '../../../../app/login/page.js'
+// File: C:\Users\Nuhaira\Downloads\nhrx-doctor-interface\nhrx\client\app\doctor\dashboard\page.js
+import * as entry from '../../../../../app/doctor/dashboard/page.js'
 import type { ResolvingMetadata, ResolvingViewport } from 'next/dist/lib/metadata/types/metadata-interface.js'
 
-type TEntry = typeof import('../../../../app/login/page.js')
+type TEntry = typeof import('../../../../../app/doctor/dashboard/page.js')
 
 // Check that the entry is a valid entry
 checkFields<Diff<{

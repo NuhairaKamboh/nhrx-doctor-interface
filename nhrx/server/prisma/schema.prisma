@@ -6,12 +6,38 @@ datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
 }
-model Doctor{
-  id Int      @id @default(autoincrement())
-  email String @unique
-  password String 
+
+model Specialities {
+  id   Int     @id @default(autoincrement())
   name String?
 }
+
+model Hospital {
+  id      Int     @id @default(autoincrement())
+  name    String
+  address String?
+}
+
+model Doctor {
+  password          String
+  name              String?
+  dailyPatientLimit Int?
+  hospitalId        Int?
+  specialtyId       Int?
+  yearsofExperience Int?
+  id                Int             @id @default(autoincrement())
+  availabilities    DoctorTimings[]
+}
+
+model DoctorTimings {
+  day       String?
+  doctorId  Int?
+  endTime   String?
+  id        Int     @id @default(autoincrement())
+  startTime String?
+  doctor    Doctor? @relation(fields: [doctorId], references: [id])
+}
+
 model Authentication {
   authenticationID                             Int       @id @default(autoincrement())
   patientID                                    Int?
@@ -78,6 +104,7 @@ model Patients {
   phone                                              String?
   email                                              String?
   createdAt                                          DateTime?        @db.Timestamp(6)
+  Appointments                                       Appointments[]
   Authentication_Authentication_nationalIDToPatients Authentication[] @relation("Authentication_nationalIDToPatients")
   Authentication_Authentication_patientIDToPatients  Authentication[] @relation("Authentication_patientIDToPatients")
   MedicalRecords                                     MedicalRecords[]
@@ -147,4 +174,51 @@ model symptoms {
   name            String            @unique @db.VarChar(100)
   code            String?           @db.VarChar(50)
   record_symptoms record_symptoms[]
+}
+
+model Appointments {
+  AppointmentID   Int           @id @default(autoincrement())
+  patientID       Int?
+  DoctorID        Int?
+  AppointmentDate DateTime?     @db.Date
+  AppointmentTime DateTime?     @db.Time(6)
+  Complaint       String?       @db.VarChar
+  Booked_at       DateTime?     @db.Timestamp(6)
+  Doctor_Dummy    Doctor_Dummy? @relation(fields: [DoctorID], references: [doctorID], onDelete: NoAction, onUpdate: NoAction)
+  Patients        Patients?     @relation(fields: [patientID], references: [patientID], onDelete: NoAction, onUpdate: NoAction)
+}
+
+model DoctorTimings_Dummy {
+  availability_id Int           @id @default(autoincrement())
+  doctorID        Int?
+  day             String?       @db.VarChar
+  start_time      DateTime?     @db.Time(6)
+  end_time        DateTime?     @db.Time(6)
+  Doctor_Dummy    Doctor_Dummy? @relation(fields: [doctorID], references: [doctorID], onDelete: NoAction, onUpdate: NoAction)
+}
+
+model Doctor_Dummy {
+  doctorID            Int                   @id @default(autoincrement())
+  Name                String?               @db.VarChar
+  YearsofExperience   Int?
+  DailyPatientLimit   Int?
+  specialityID        Int?
+  hospitalID          Int?
+  Appointments        Appointments[]
+  DoctorTimings_Dummy DoctorTimings_Dummy[]
+  Hospitals           Hospitals?            @relation(fields: [hospitalID], references: [hospitalID], onDelete: NoAction, onUpdate: NoAction)
+  Specialities_Dummy  Specialities_Dummy?   @relation(fields: [specialityID], references: [specialityID], onDelete: NoAction, onUpdate: NoAction)
+}
+
+model Hospitals {
+  hospitalID   Int            @id @default(autoincrement())
+  hospitalName String?        @db.VarChar
+  City         String?        @db.VarChar
+  Doctor_Dummy Doctor_Dummy[]
+}
+
+model Specialities_Dummy {
+  specialityID   Int            @id @default(autoincrement())
+  specialityName String?        @db.VarChar
+  Doctor_Dummy   Doctor_Dummy[]
 }

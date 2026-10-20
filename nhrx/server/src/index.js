@@ -10,6 +10,9 @@ app.get('/api/health', (_req, res) => res.json({ ok: true }));
 app.use('/api/auth', require('./routes/auth'));
 app.use('/api/cases', require('./routes/cases'));
 
+// 🚀 AAPNE BAS YEH AIK NAYI LINE ADD KARNI HAI:
+app.use('/api/appointments', require('./routes/appointments'));
+
 app.use((err, _req, res, _next) => {
   console.error(err);
   res.status(500).json({ error: 'Internal server error' });
